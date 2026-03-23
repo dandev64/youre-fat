@@ -82,7 +82,7 @@ export default function ExercisePickerModal({ onPick, onClose }) {
               onChange={e => setSearch(e.target.value)}
               placeholder="Search exercises, muscles, tags…"
               autoFocus
-              className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface-container text-on-surface text-[16px] font-medium outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-on-surface-variant/30"
+              className="w-full pl-10 pr-4 py-3 rounded-2xl bg-surface-container text-on-surface text-sm font-medium outline-none focus:ring-2 focus:ring-primary/30 placeholder:text-on-surface-variant/30"
             />
           </div>
 
