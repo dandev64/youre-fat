@@ -48,7 +48,7 @@ export default function TopAppBar() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-on-surface-variant/50 font-mono">v1.0.13</span>
+          <span className="text-[10px] text-on-surface-variant/50 font-mono">v1.0.14</span>
           
           <button className="w-10 h-10 flex items-center justify-center rounded-full active:bg-surface-container-low transition-colors">
             <span
