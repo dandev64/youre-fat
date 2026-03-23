@@ -23,7 +23,10 @@ export default function DayPicker({ weekStart }) {
 
   const handleDayClick = (day) => {
     setSelectedDate(day)
-    navigate(`/day/${format(day, 'yyyy-MM-dd')}`)
+    // navigate(`/day/${format(day, 'yyyy-MM-dd')}`)
+    if (location.pathname !== '/') {
+      navigate('/')
+    }
   }
 
   return (
