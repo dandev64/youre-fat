@@ -17,7 +17,7 @@ body {
 
 /* iPhone safe areas */
 .safe-bottom { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
-.safe-top { padding-top: env(safe-area-inset-top); }
+.safe-top { padding-top: max(env(safe-area-inset-top), 48px); }
 
 /* Safe area bottom with navbar spacing (80px navbar) */
 .pb-nav { padding-bottom: 5rem; }
