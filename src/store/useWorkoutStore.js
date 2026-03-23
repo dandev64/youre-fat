@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { format } from 'date-fns'
-import { generateWorkoutPlan } from '../data/workoutPlan'
+import { generateWorkoutPlan, DEFAULT_SCHEDULE } from '../data/workoutPlan'
 import { SEED_TEMPLATES } from '../data/seedTemplates'
 import {
   db,
@@ -14,7 +14,9 @@ import {
   seedTemplatesIfEmpty,
   getAllCustomExercises,
   saveCustomExercise,
-  deleteCustomExerciseById
+  deleteCustomExerciseById,
+  getWeeklySchedule,
+  saveWeeklySchedule
 } from '../db/db'
 import { supabase, syncEnabled } from '../lib/supabase'
 import {
@@ -29,8 +31,6 @@ import {
   subscribeToSessions
 } from '../lib/sync'
 
-const seedPlan = generateWorkoutPlan()
-
 function nextDayNumber(workoutPlan) {
   return (
     Object.values(workoutPlan).reduce(
@@ -42,10 +42,15 @@ function nextDayNumber(workoutPlan) {
   )
 }
 
+const initialPlan = generateWorkoutPlan(SEED_TEMPLATES, DEFAULT_SCHEDULE)
+
 export const useWorkoutStore = create((set, get) => ({
   // ── calendar ─────────────────────────────────────────────
   selectedDate: new Date(),
-  workoutPlan: seedPlan,
+  workoutPlan: initialPlan,
+
+  // ── weekly schedule ────────────────────────────────────────
+  weeklySchedule: DEFAULT_SCHEDULE,
 
   // ── exercise ─────────────────────────────────────────────
   completedExercises: new Set(),
@@ -60,9 +65,9 @@ export const useWorkoutStore = create((set, get) => ({
   // ── auth / sync ──────────────────────────────────────────
   user: null,
   authLoading: true,
-  syncStatus: 'idle',   // 'idle' | 'syncing' | 'synced' | 'error'
+  syncStatus: 'idle',
   syncError: null,
-  _realtimeUnsubs: [],  // internal: cleanup functions
+  _realtimeUnsubs: [],
 
   initialized: false,
 
@@ -70,25 +75,30 @@ export const useWorkoutStore = create((set, get) => ({
   // Bootstrap
   // ─────────────────────────────────────────────────────────
   initializeStore: async () => {
-    // 1. Load local data from Dexie immediately
     try {
       await seedTemplatesIfEmpty(SEED_TEMPLATES)
-      const [completions, dbTemplates, dbCustomExercises] = await Promise.all([
+      const [completions, dbTemplates, dbCustomExercises, dbSchedule] = await Promise.all([
         getCompletions(),
         getAllTemplates(),
-        getAllCustomExercises()
+        getAllCustomExercises(),
+        getWeeklySchedule()
       ])
+      const templates = dbTemplates.length ? dbTemplates : SEED_TEMPLATES
+      const schedule = dbSchedule ?? DEFAULT_SCHEDULE
+      const plan = generateWorkoutPlan(templates, schedule)
+
       set({
         completedExercises: new Set(completions.map(c => c.exerciseId)),
-        templates: dbTemplates.length ? dbTemplates : SEED_TEMPLATES,
+        templates,
         customExercises: dbCustomExercises,
+        weeklySchedule: schedule,
+        workoutPlan: plan,
         initialized: true
       })
     } catch {
       set({ initialized: true })
     }
 
-    // 2. Set up Supabase auth listener (if configured)
     if (!syncEnabled) {
       set({ authLoading: false })
       return
@@ -113,11 +123,36 @@ export const useWorkoutStore = create((set, get) => ({
       }
     })
 
-    // Flush any queued offline writes on reconnect
     window.addEventListener('online', () => {
       const { user } = get()
       if (user) flushPendingQueue(user.id).catch(() => {})
     })
+  },
+
+  // ─────────────────────────────────────────────────────────
+  // Plan regeneration
+  // ─────────────────────────────────────────────────────────
+  regeneratePlan: () => {
+    const { templates, weeklySchedule, workoutPlan } = get()
+    const freshPlan = generateWorkoutPlan(templates, weeklySchedule)
+
+    // Merge: replace schedule sessions, keep manual sessions
+    const merged = {}
+    const allDates = new Set([...Object.keys(freshPlan), ...Object.keys(workoutPlan)])
+
+    for (const dateStr of allDates) {
+      const oldSessions = workoutPlan[dateStr]?.sessions ?? []
+      const newScheduleSessions = freshPlan[dateStr]?.sessions ?? []
+
+      // Keep sessions that were manually added
+      const manualSessions = oldSessions.filter(s => s.source === 'manual')
+
+      merged[dateStr] = {
+        sessions: [...newScheduleSessions, ...manualSessions]
+      }
+    }
+
+    set({ workoutPlan: merged })
   },
 
   // ─────────────────────────────────────────────────────────
@@ -127,26 +162,23 @@ export const useWorkoutStore = create((set, get) => ({
     set({ syncStatus: 'syncing', syncError: null })
 
     try {
-      // Flush anything queued while offline
       await flushPendingQueue(user.id)
-
-      // Pull all remote data
       const { templates, sessionsMap, completions } = await pullAllUserData(user.id)
 
-      // Merge remote sessions on top of seed plan
-      const freshSeed = generateWorkoutPlan()
-      const mergedPlan = { ...freshSeed }
+      const { weeklySchedule } = get()
+      const freshPlan = generateWorkoutPlan(
+        templates.length ? templates : get().templates,
+        weeklySchedule
+      )
+      const mergedPlan = { ...freshPlan }
       for (const [date, dayData] of Object.entries(sessionsMap)) {
-        // Replace seed sessions with user's real sessions for this date
         mergedPlan[date] = dayData
       }
 
-      // Persist completions to Dexie
       await db.completions.clear()
       const completionRows = [...completions].map(id => ({ exerciseId: id, date: '' }))
       await db.completions.bulkPut(completionRows)
 
-      // Persist templates to Dexie
       if (templates.length) {
         await db.templates.clear()
         await db.templates.bulkPut(templates)
@@ -160,7 +192,6 @@ export const useWorkoutStore = create((set, get) => ({
         syncError: null
       })
 
-      // Start realtime subscriptions
       get()._subscribeRealtime(user.id)
     } catch (err) {
       console.error('[sync] pull failed:', err.message)
@@ -169,13 +200,12 @@ export const useWorkoutStore = create((set, get) => ({
   },
 
   _onSignOut: () => {
-    // Tear down realtime channels
     get()._realtimeUnsubs.forEach(fn => fn())
 
-    // Revert to seed state
+    const schedule = get().weeklySchedule
     set({
       user: null,
-      workoutPlan: generateWorkoutPlan(),
+      workoutPlan: generateWorkoutPlan(SEED_TEMPLATES, schedule),
       completedExercises: new Set(),
       templates: SEED_TEMPLATES,
       syncStatus: 'idle',
@@ -187,7 +217,6 @@ export const useWorkoutStore = create((set, get) => ({
   _subscribeRealtime: (userId) => {
     const unsubCompletions = subscribeToCompletions(
       userId,
-      // Remote INSERT → mark locally complete
       (exerciseId) => {
         set(state => {
           const next = new Set(state.completedExercises)
@@ -195,7 +224,6 @@ export const useWorkoutStore = create((set, get) => ({
           return { completedExercises: next }
         })
       },
-      // Remote DELETE → mark locally incomplete
       (exerciseId) => {
         set(state => {
           const next = new Set(state.completedExercises)
@@ -250,10 +278,8 @@ export const useWorkoutStore = create((set, get) => ({
 
   signOut: async () => {
     await supabase.auth.signOut()
-    // _onSignOut is called by the auth state listener
   },
 
-  // Force a full re-pull from Supabase
   manualSync: async () => {
     const { user } = get()
     if (!user) return
@@ -265,6 +291,17 @@ export const useWorkoutStore = create((set, get) => ({
   // ─────────────────────────────────────────────────────────
   setSelectedDate: (date) =>
     set({ selectedDate: date instanceof Date ? date : new Date(date) }),
+
+  // ─────────────────────────────────────────────────────────
+  // Weekly Schedule
+  // ─────────────────────────────────────────────────────────
+  setDayTemplate: async (dow, templateId) => {
+    const { weeklySchedule } = get()
+    const updated = { ...weeklySchedule, [dow]: templateId }
+    set({ weeklySchedule: updated })
+    await saveWeeklySchedule(updated)
+    get().regeneratePlan()
+  },
 
   // ─────────────────────────────────────────────────────────
   // Exercise completion
@@ -314,6 +351,20 @@ export const useWorkoutStore = create((set, get) => ({
   // ─────────────────────────────────────────────────────────
   // Sessions
   // ─────────────────────────────────────────────────────────
+  deleteSession: (dateStr, sessionId) => {
+    const { workoutPlan } = get()
+    const dayData = workoutPlan[dateStr]
+    if (!dayData) return
+
+    const sessions = dayData.sessions.filter(s => s.id !== sessionId)
+    set({
+      workoutPlan: {
+        ...workoutPlan,
+        [dateStr]: { sessions }
+      }
+    })
+  },
+
   addExercise: (date, exercise) => {
     const { workoutPlan, user } = get()
     const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd')
@@ -361,14 +412,16 @@ export const useWorkoutStore = create((set, get) => ({
 
     const newSession = {
       id: sessionId,
-      title: `Day ${dayNum}: ${template.name}`,
+      title: template.name,
       sessionNum: String(dayNum).padStart(2, '0'),
       category: template.category,
       duration: template.duration,
       location: template.location,
       colorKey: template.colorKey,
       time,
-      exercises
+      exercises,
+      source: 'manual',
+      templateId
     }
 
     const prior = (workoutPlan[dateStr]?.sessions ?? []).filter(s => s.title !== 'Rest Day')
@@ -404,13 +457,30 @@ export const useWorkoutStore = create((set, get) => ({
     await saveTemplate(tpl)
     if (user) remoteUpsertTemplate(user.id, tpl).catch(() => {})
     set({ templates: updated })
+    // Regenerate plan so scheduled sessions pick up the new exercises
+    get().regeneratePlan()
   },
 
   deleteTemplate: async (id) => {
-    const { user } = get()
+    const { user, weeklySchedule } = get()
     await deleteTemplateById(id)
     if (user) remoteDeleteTemplate(user.id, id).catch(() => {})
     set(state => ({ templates: state.templates.filter(t => t.id !== id) }))
+
+    // Clear this template from the schedule if it was assigned
+    const updatedSchedule = { ...weeklySchedule }
+    let scheduleChanged = false
+    for (const dow in updatedSchedule) {
+      if (updatedSchedule[dow] === id) {
+        updatedSchedule[dow] = null
+        scheduleChanged = true
+      }
+    }
+    if (scheduleChanged) {
+      set({ weeklySchedule: updatedSchedule })
+      await saveWeeklySchedule(updatedSchedule)
+    }
+    get().regeneratePlan()
   },
 
   // ─────────────────────────────────────────────────────────

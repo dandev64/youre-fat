@@ -36,6 +36,17 @@ db.version(4).stores({
   customExercises: 'libraryId, name, category'
 })
 
+// v5 — add weekly schedule
+db.version(5).stores({
+  workoutDays: 'date, title',
+  exercises: '++id, date, name, order',
+  completions: 'exerciseId, date',
+  templates: 'id, name, category',
+  pendingSyncs: '++id, operation, createdAt',
+  customExercises: 'libraryId, name, category',
+  weeklySchedule: 'dow'
+})
+
 // ── completions ────────────────────────────────────────────────────────────
 export async function getCompletions() {
   return db.completions.toArray()
@@ -85,6 +96,24 @@ export async function saveCustomExercise(exercise) {
 
 export async function deleteCustomExerciseById(libraryId) {
   await db.customExercises.delete(libraryId)
+}
+
+// ── weekly schedule ──────────────────────────────────────────────────────
+export async function getWeeklySchedule() {
+  const rows = await db.weeklySchedule.toArray()
+  if (!rows.length) return null
+  const schedule = {}
+  rows.forEach(r => { schedule[r.dow] = r.templateId })
+  return schedule
+}
+
+export async function saveWeeklySchedule(schedule) {
+  const rows = Object.entries(schedule).map(([dow, templateId]) => ({
+    dow: parseInt(dow),
+    templateId
+  }))
+  await db.weeklySchedule.clear()
+  await db.weeklySchedule.bulkPut(rows)
 }
 
 // ── pending syncs ──────────────────────────────────────────────────────────

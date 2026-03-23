@@ -6,13 +6,14 @@ import BottomNavBar from '../components/BottomNavBar'
 import DayPicker from '../components/DayPicker'
 import SessionCard from '../components/SessionCard'
 import AddSessionModal from '../components/AddSessionModal'
+import ScheduleEditor from '../components/ScheduleEditor'
 
 export default function HomePage() {
-  const { selectedDate, workoutPlan } = useWorkoutStore()
+  const { selectedDate, workoutPlan, deleteSession } = useWorkoutStore()
   const [weekOffset, setWeekOffset] = useState(0)
   const [showAddSession, setShowAddSession] = useState(false)
+  const [showSchedule, setShowSchedule] = useState(false)
 
-  // Which week to show in the strip
   const baseWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
   const displayWeekStart =
     weekOffset === 0
@@ -30,15 +31,16 @@ export default function HomePage() {
     ? "Today's Sessions"
     : `${format(selectedDate, 'EEEE, MMM d')} Sessions`
 
+  const handleDeleteSession = (sessionId) => {
+    deleteSession(dateStr, sessionId)
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
       <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav"
-      style={{ 
-          // 1. Get the safe area (or 20px minimum)
-          // 2. Add 64px (the h-16 height of your TopAppBar)
-          // This ensures the first piece of text starts exactly below the top bar!
+      style={{
           paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 70px)'
         }}>
         {/* Month navigation header */}
@@ -53,6 +55,15 @@ export default function HomePage() {
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowSchedule(true)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-white shadow-sm active:scale-90 transition-all"
+              title="Edit weekly schedule"
+            >
+              <span className="material-symbols-outlined text-primary" style={{ fontSize: '20px' }}>
+                tune
+              </span>
+            </button>
             <button
               onClick={() => setWeekOffset(w => w - 1)}
               className="w-10 h-10 flex items-center justify-center rounded-full bg-white shadow-sm active:scale-90 transition-all"
@@ -103,7 +114,11 @@ export default function HomePage() {
                     )}
                   </div>
                   <div className="flex-1 -mt-0.5">
-                    <SessionCard session={session} date={selectedDate} />
+                    <SessionCard
+                      session={session}
+                      date={selectedDate}
+                      onDelete={handleDeleteSession}
+                    />
                   </div>
                 </div>
               ))}
@@ -156,6 +171,10 @@ export default function HomePage() {
           date={selectedDate}
           onClose={() => setShowAddSession(false)}
         />
+      )}
+
+      {showSchedule && (
+        <ScheduleEditor onClose={() => setShowSchedule(false)} />
       )}
 
       <BottomNavBar />
