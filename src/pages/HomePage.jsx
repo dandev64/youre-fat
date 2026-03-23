@@ -39,7 +39,7 @@ export default function HomePage() {
           // 1. Get the safe area (or 20px minimum)
           // 2. Add 64px (the h-16 height of your TopAppBar)
           // This ensures the first piece of text starts exactly below the top bar!
-          paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 64px)'
+          paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 70px)'
         }}>
         {/* Month navigation header */}
         <div className="flex items-center justify-between mb-5">

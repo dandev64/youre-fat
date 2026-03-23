@@ -34,7 +34,13 @@ export default function WorkoutsPage() {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav">
+      <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav"
+      style={{ 
+          // 1. Get the safe area (or 20px minimum)
+          // 2. Add 64px (the h-16 height of your TopAppBar)
+          // This ensures the first piece of text starts exactly below the top bar!
+          paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 70px)'
+        }}>
         {/* Page title */}
         <div className="flex items-center justify-between mb-5">
           <div>

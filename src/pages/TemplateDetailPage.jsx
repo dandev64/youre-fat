@@ -89,7 +89,13 @@ export default function TemplateDetailPage({ isNew = false }) {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 max-w-2xl mx-auto pb-nav">
+      <main className="pt-24 max-w-2xl mx-auto pb-nav"
+      style={{ 
+          // 1. Get the safe area (or 20px minimum)
+          // 2. Add 64px (the h-16 height of your TopAppBar)
+          // This ensures the first piece of text starts exactly below the top bar!
+          paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 70px)'
+        }}>
         {/* Hero header band */}
         <div className={`bg-gradient-to-br ${colors.grad} px-6 pt-6 pb-8 relative overflow-hidden`}>
           <span
