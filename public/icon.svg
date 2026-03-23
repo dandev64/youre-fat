@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#65518a"/>
+  <!-- Dumbbell icon -->
+  <g fill="#f8efff">
+    <!-- Left weight plate -->
+    <rect x="60" y="210" width="48" height="92" rx="14"/>
+    <!-- Left bar grip -->
+    <rect x="108" y="232" width="40" height="48" rx="8"/>
+    <!-- Center bar -->
+    <rect x="148" y="242" width="216" height="28" rx="14"/>
+    <!-- Right bar grip -->
+    <rect x="364" y="232" width="40" height="48" rx="8"/>
+    <!-- Right weight plate -->
+    <rect x="404" y="210" width="48" height="92" rx="14"/>
+  </g>
+</svg>
