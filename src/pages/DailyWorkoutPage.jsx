@@ -260,7 +260,7 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
             {/* Name */}
             <div>
               <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Exercise Name *</label>
-              <input type="text" value={form.name} onChange={f('name')} placeholder="e.g. Pull-ups" autoFocus className={inputCls} />
+              <input type="text" value={form.name} onChange={f('name')} placeholder="e.g. Pull-ups" autoFocus className={`text-[16px] ${inputCls}`} />
             </div>
 
             {/* Weight + Rest */}
