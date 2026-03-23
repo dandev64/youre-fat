@@ -17,8 +17,7 @@ export default function BottomNavBar() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-2xl rounded-t-2xl shadow-[0_-8px_32px_rgba(101,81,138,0.06)]"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0.25rem)' }}
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-2xl rounded-t-2xl shadow-[0_-8px_32px_rgba(101,81,138,0.06)] bottom-nav-safe"
     >
       <div className="flex items-center justify-around px-8 pt-2 pb-1 max-w-2xl mx-auto">
         {tabs.map(tab => {

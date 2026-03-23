@@ -19,8 +19,11 @@ body {
 .safe-bottom { padding-bottom: calc(5rem + env(safe-area-inset-bottom)); }
 .safe-top { padding-top: max(env(safe-area-inset-top), 48px); }
 
-/* Safe area bottom with navbar spacing (80px navbar) */
-.pb-nav { padding-bottom: 5rem; }
+/* Safe area bottom with navbar spacing */
+.pb-nav { padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px)); }
+
+/* Bottom nav safe area — in CSS so env() resolves at paint, not late via JS */
+.bottom-nav-safe { padding-bottom: env(safe-area-inset-bottom, 0.25rem); }
 
 /* Card tap feedback */
 .active-scale:active { transform: scale(0.96); opacity: 0.9; }
