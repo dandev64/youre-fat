@@ -120,7 +120,7 @@ export default function TemplateDetailPage({ isNew = false }) {
               <input
                 value={duration}
                 onChange={e => { setDuration(e.target.value); markDirty() }}
-                className="bg-transparent text-white text-[11px] font-semibold outline-none w-16"
+                className="bg-transparent text-white text-[16px] font-semibold outline-none w-16"
                 placeholder="60 min"
               />
             </div>
@@ -129,11 +129,11 @@ export default function TemplateDetailPage({ isNew = false }) {
               <input
                 value={location}
                 onChange={e => { setLocation(e.target.value); markDirty() }}
-                className="bg-transparent text-white text-[11px] font-semibold outline-none w-16"
+                className="bg-transparent text-white text-[16px] font-semibold outline-none w-16"
                 placeholder="Gym"
               />
             </div>
-            <span className="text-white/60 text-[11px] font-medium">
+            <span className="text-white/60 text-[16px] font-medium">
               {exercises.length} exercise{exercises.length !== 1 ? 's' : ''}
             </span>
           </div>

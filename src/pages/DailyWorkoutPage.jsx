@@ -259,18 +259,18 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
           <form id="daily-exercise-form" onSubmit={handleSubmit} className="space-y-4">
             {/* Name */}
             <div>
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Exercise Name *</label>
+              <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Exercise Name *</label>
               <input type="text" value={form.name} onChange={f('name')} placeholder="e.g. Pull-ups" autoFocus className={inputCls} />
             </div>
 
             {/* Weight + Rest */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Weight</label>
+                <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Weight</label>
                 <input type="text" value={form.weight} onChange={f('weight')} placeholder="e.g. 20 kg" className={inputCls} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Rest</label>
+                <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Rest</label>
                 <input type="text" value={form.rest} onChange={f('rest')} placeholder="60s" className={inputCls} />
               </div>
             </div>
@@ -278,15 +278,15 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
             {/* Sets / Reps / Duration */}
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Sets</label>
+                <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Sets</label>
                 <input type="number" value={form.sets} onChange={f('sets')} placeholder="3" min="1" className={inputCls} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Reps</label>
+                <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Reps</label>
                 <input type="text" value={form.reps} onChange={f('reps')} placeholder="10" className={inputCls} />
               </div>
               <div>
-                <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Duration</label>
+                <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Duration</label>
                 <input type="text" value={form.duration} onChange={f('duration')} placeholder="—" className={inputCls} />
               </div>
             </div>
@@ -331,7 +331,7 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
 
             {/* Video Link */}
             <div>
-              <label className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Video Link</label>
+              <label className="text-[16px] font-bold text-on-surface-variant uppercase tracking-wider block mb-1.5">Video Link</label>
               <div className="relative">
                 <input type="url" value={form.videoUrl} onChange={f('videoUrl')} placeholder="YouTube, Instagram, or any video URL" className={inputCls} style={{ paddingRight: form.videoUrl ? '3rem' : undefined }} />
                 {form.videoUrl ? (

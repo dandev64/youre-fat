@@ -31,23 +31,23 @@ body {
 
 /* Prevent overscroll bounce causing layout issues */
 /* Prevent overscroll bounce and force iOS to stretch to the physical screen edge */
-html {
+html, body {
   height: 100%;
-  height: 100dvh;
-  overflow-x: hidden;
-}
-
-body {
-  height: 100%;
-  height: 100dvh;
-  overflow-x: hidden;
-  overscroll-behavior-y: none;
+  height: -webkit-fill-available;
+  overflow: hidden; /* Lock the outer container */
 }
 
 #root {
   height: 100%;
-  height: 100dvh;
+  height: -webkit-fill-available;
   display: flex;
   flex-direction: column;
+}
+
+/* Make your main content scrollable instead of the body */
+main {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
