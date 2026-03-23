@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { format, parseISO } from 'date-fns'
 import { useNavigate } from 'react-router-dom'
 import { useWorkoutStore } from '../store/useWorkoutStore'
@@ -9,6 +9,19 @@ const CATEGORY_FILTERS = ['All', 'Strength Training', 'Cardio & Conditioning', '
 export default function AddSessionModal({ date, onClose, preselectedTemplateId = null }) {
   const { templates, addSessionFromTemplate } = useWorkoutStore()
   const navigate = useNavigate()
+
+  useEffect(() => {
+    const y = window.scrollY
+    document.body.style.top = `-${y}px`
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    return () => {
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
+      window.scrollTo(0, y)
+    }
+  }, [])
 
   const dateObj = typeof date === 'string' ? parseISO(date) : date
   const dateStr = format(dateObj, 'yyyy-MM-dd')

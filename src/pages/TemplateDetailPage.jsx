@@ -4,7 +4,6 @@ import { format } from 'date-fns'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 import { COLOR_MAP, CATEGORY_ICON } from '../data/seedTemplates'
 import TopAppBar from '../components/TopAppBar'
-import BottomNavBar from '../components/BottomNavBar'
 import AddSessionModal from '../components/AddSessionModal'
 import ExercisePickerModal from '../components/ExercisePickerModal'
 
@@ -417,13 +416,25 @@ export default function TemplateDetailPage({ isNew = false }) {
         </div>
       )}
 
-      <BottomNavBar />
     </div>
   )
 }
 
 // ── Inline exercise form modal ────────────────────────────────────────────────
 function ExerciseFormModal({ initial, onSave, onClose }) {
+  useEffect(() => {
+    const y = window.scrollY
+    document.body.style.top = `-${y}px`
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    return () => {
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
+      window.scrollTo(0, y)
+    }
+  }, [])
+
   const [form, setForm] = useState({
     name: initial?.name ?? '',
     weight: initial?.weight ?? '',

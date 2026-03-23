@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { EXERCISE_LIBRARY, LIBRARY_CATEGORIES } from '../data/exerciseLibrary'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 
@@ -7,6 +7,19 @@ export default function ExercisePickerModal({ onPick, onClose }) {
   const deleteCustomExercise = useWorkoutStore(s => s.deleteCustomExercise)
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('All')
+
+  useEffect(() => {
+    const y = window.scrollY
+    document.body.style.top = `-${y}px`
+    document.body.style.position = 'fixed'
+    document.body.style.width = '100%'
+    return () => {
+      document.body.style.position = ''
+      document.body.style.top = ''
+      document.body.style.width = ''
+      window.scrollTo(0, y)
+    }
+  }, [])
 
   const categories = useMemo(() => {
     if (customExercises.length > 0) return [...LIBRARY_CATEGORIES, 'Custom']

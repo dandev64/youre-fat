@@ -2,8 +2,7 @@ import { useNavigate, useLocation } from 'react-router-dom'
 
 const tabs = [
   { icon: 'calendar_today', label: 'Home', path: '/' },
-  { icon: 'fitness_center', label: 'Workouts', path: '/workouts' },
-  { icon: 'person', label: 'Profile', path: '/profile' }
+  { icon: 'fitness_center', label: 'Workouts', path: '/workouts' }
 ]
 
 export default function BottomNavBar() {
