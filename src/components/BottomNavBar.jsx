@@ -18,12 +18,16 @@ export default function BottomNavBar() {
 
   return (
     <nav
-      className="fixed left-0 right-0 z-50 bg-white/80 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(101,81,138,0.06)]"
+      // ADDED: touch-none select-none to keep it locked in place
+      className="fixed bottom-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-2xl rounded-t-[2.5rem] shadow-[0_-8px_32px_rgba(101,81,138,0.06)] touch-none select-none"
       style={{ 
+        // 1. Force the bottom to absolute 0
         bottom: '0px',
-        paddingBottom: 'calc(1rem + max(env(safe-area-inset-bottom, 0px), 0px))',
-        WebkitFontSmoothing: 'antialiased',
-        WebkitBoxSizing: 'border-box'
+        // 2. Kill the env() bug entirely. 34px is the exact height of the iOS home indicator.
+        paddingBottom: '34px',
+        // 3. Keep the top padding consistent
+        paddingTop: '12px',
+        WebkitFontSmoothing: 'antialiased'
       }}
     >
       <div className="flex items-center justify-around px-8 pt-3 max-w-2xl mx-auto">
