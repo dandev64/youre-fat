@@ -134,8 +134,12 @@ export const useWorkoutStore = create((set, get) => ({
       const newScheduleSessions = freshPlan[dateStr]?.sessions ?? []
       const manualSessions = oldSessions.filter(s => s.source === 'manual')
 
+      // Skip generated sessions where a manual override exists for the same template
+      const manualTemplateIds = new Set(manualSessions.filter(s => s.templateId).map(s => s.templateId))
+      const filtered = newScheduleSessions.filter(s => !s.templateId || !manualTemplateIds.has(s.templateId))
+
       merged[dateStr] = {
-        sessions: [...newScheduleSessions, ...manualSessions]
+        sessions: [...filtered, ...manualSessions]
       }
     }
 
@@ -192,7 +196,11 @@ export const useWorkoutStore = create((set, get) => ({
       const mergedPlan = { ...freshPlan }
       for (const [date, dayData] of Object.entries(sessionsMap)) {
         const scheduleSessions = freshPlan[date]?.sessions ?? []
-        mergedPlan[date] = { sessions: [...scheduleSessions, ...dayData.sessions] }
+        const manualSessions = dayData.sessions
+        // Skip generated sessions where a pulled manual session covers the same template
+        const manualTemplateIds = new Set(manualSessions.filter(s => s.templateId).map(s => s.templateId))
+        const filtered = scheduleSessions.filter(s => !s.templateId || !manualTemplateIds.has(s.templateId))
+        mergedPlan[date] = { sessions: [...filtered, ...manualSessions] }
       }
 
       // Persist pulled data to Dexie
@@ -304,10 +312,12 @@ export const useWorkoutStore = create((set, get) => ({
     const dayData = workoutPlan[dateStr]
     if (!dayData) return
 
-    const sessions = dayData.sessions.map(s => ({
-      ...s,
-      exercises: s.exercises.filter(ex => ex.id !== exerciseId)
-    }))
+    const sessions = dayData.sessions.map(s => {
+      const filtered = s.exercises.filter(ex => ex.id !== exerciseId)
+      if (filtered.length === s.exercises.length) return s
+      // Mark as manual so the modification persists through sync/regeneration
+      return { ...s, exercises: filtered, source: 'manual' }
+    })
     set({
       workoutPlan: {
         ...workoutPlan,
@@ -321,12 +331,17 @@ export const useWorkoutStore = create((set, get) => ({
     const dayData = workoutPlan[dateStr]
     if (!dayData) return
 
-    const sessions = dayData.sessions.map(s => ({
-      ...s,
-      exercises: s.exercises.map(ex =>
-        ex.id === exerciseId ? { ...ex, ...updates } : ex
-      )
-    }))
+    const sessions = dayData.sessions.map(s => {
+      const hasExercise = s.exercises.some(ex => ex.id === exerciseId)
+      if (!hasExercise) return s
+      return {
+        ...s,
+        exercises: s.exercises.map(ex =>
+          ex.id === exerciseId ? { ...ex, ...updates } : ex
+        ),
+        source: 'manual'
+      }
+    })
     set({
       workoutPlan: {
         ...workoutPlan,
