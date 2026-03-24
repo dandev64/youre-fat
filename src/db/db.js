@@ -47,6 +47,18 @@ db.version(5).stores({
   weeklySchedule: 'dow'
 })
 
+// v6 — add session overrides (manual edits to scheduled sessions)
+db.version(6).stores({
+  workoutDays: 'date, title',
+  exercises: '++id, date, name, order',
+  completions: 'exerciseId, date',
+  templates: 'id, name, category',
+  pendingSyncs: '++id, operation, createdAt',
+  customExercises: 'libraryId, name, category',
+  weeklySchedule: 'dow',
+  sessionOverrides: 'id, date'
+})
+
 // ── completions ────────────────────────────────────────────────────────────
 export async function getCompletions() {
   return db.completions.toArray()
@@ -114,6 +126,23 @@ export async function saveWeeklySchedule(schedule) {
   }))
   await db.weeklySchedule.clear()
   await db.weeklySchedule.bulkPut(rows)
+}
+
+// ── session overrides (locally modified sessions) ─────────────────────────
+export async function getAllSessionOverrides() {
+  return db.sessionOverrides.toArray()
+}
+
+export async function saveSessionOverride(date, session) {
+  await db.sessionOverrides.put({ id: session.id, date, ...session })
+}
+
+export async function clearSessionOverrides() {
+  await db.sessionOverrides.clear()
+}
+
+export async function bulkPutSessionOverrides(rows) {
+  if (rows.length) await db.sessionOverrides.bulkPut(rows)
 }
 
 // ── pending syncs ──────────────────────────────────────────────────────────

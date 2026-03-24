@@ -16,7 +16,11 @@ import {
   saveCustomExercise,
   deleteCustomExerciseById,
   getWeeklySchedule,
-  saveWeeklySchedule
+  saveWeeklySchedule,
+  getAllSessionOverrides,
+  saveSessionOverride,
+  clearSessionOverrides,
+  bulkPutSessionOverrides
 } from '../db/db'
 import { supabase, syncEnabled } from '../lib/supabase'
 import { pushAllUserData, pullAllUserData } from '../lib/sync'
@@ -66,15 +70,33 @@ export const useWorkoutStore = create((set, get) => ({
   initializeStore: async () => {
     try {
       await seedTemplatesIfEmpty(SEED_TEMPLATES)
-      const [completions, dbTemplates, dbCustomExercises, dbSchedule] = await Promise.all([
+      const [completions, dbTemplates, dbCustomExercises, dbSchedule, dbOverrides] = await Promise.all([
         getCompletions(),
         getAllTemplates(),
         getAllCustomExercises(),
-        getWeeklySchedule()
+        getWeeklySchedule(),
+        getAllSessionOverrides()
       ])
       const templates = dbTemplates.length ? dbTemplates : SEED_TEMPLATES
       const schedule = dbSchedule ?? DEFAULT_SCHEDULE
       const plan = generateWorkoutPlan(templates, schedule)
+
+      // Merge saved manual session overrides back into the generated plan
+      if (dbOverrides.length) {
+        const byDate = {}
+        for (const row of dbOverrides) {
+          if (!byDate[row.date]) byDate[row.date] = []
+          // Strip Dexie metadata (id is the session id, date is stored separately)
+          const { date: _d, ...session } = row
+          byDate[row.date].push(session)
+        }
+        for (const [dateStr, manualSessions] of Object.entries(byDate)) {
+          const scheduleSessions = plan[dateStr]?.sessions ?? []
+          const manualTemplateIds = new Set(manualSessions.filter(s => s.templateId).map(s => s.templateId))
+          const filtered = scheduleSessions.filter(s => !s.templateId || !manualTemplateIds.has(s.templateId))
+          plan[dateStr] = { sessions: [...filtered, ...manualSessions] }
+        }
+      }
 
       set({
         completedExercises: new Set(completions.map(c => c.exerciseId)),
@@ -222,6 +244,16 @@ export const useWorkoutStore = create((set, get) => ({
         await saveWeeklySchedule(weeklySchedule)
       }
 
+      // Persist pulled manual sessions to Dexie so they survive app reloads
+      await clearSessionOverrides()
+      const overrideRows = []
+      for (const [date, dayData] of Object.entries(sessionsMap)) {
+        for (const s of dayData.sessions) {
+          overrideRows.push({ id: s.id, date, ...s })
+        }
+      }
+      await bulkPutSessionOverrides(overrideRows)
+
       set({
         workoutPlan: mergedPlan,
         completedExercises: completions,
@@ -293,7 +325,7 @@ export const useWorkoutStore = create((set, get) => ({
   // ─────────────────────────────────────────────────────────
   // Sessions
   // ─────────────────────────────────────────────────────────
-  deleteSession: (dateStr, sessionId) => {
+  deleteSession: async (dateStr, sessionId) => {
     const { workoutPlan } = get()
     const dayData = workoutPlan[dateStr]
     if (!dayData) return
@@ -305,9 +337,11 @@ export const useWorkoutStore = create((set, get) => ({
         [dateStr]: { sessions }
       }
     })
+    // Remove from Dexie if it was a saved override
+    db.sessionOverrides.delete(sessionId).catch(() => {})
   },
 
-  deleteExercise: (dateStr, exerciseId) => {
+  deleteExercise: async (dateStr, exerciseId) => {
     const { workoutPlan } = get()
     const dayData = workoutPlan[dateStr]
     if (!dayData) return
@@ -315,7 +349,6 @@ export const useWorkoutStore = create((set, get) => ({
     const sessions = dayData.sessions.map(s => {
       const filtered = s.exercises.filter(ex => ex.id !== exerciseId)
       if (filtered.length === s.exercises.length) return s
-      // Mark as manual so the modification persists through sync/regeneration
       return { ...s, exercises: filtered, source: 'manual' }
     })
     set({
@@ -324,9 +357,15 @@ export const useWorkoutStore = create((set, get) => ({
         [dateStr]: { sessions }
       }
     })
+    // Persist manual sessions to Dexie so they survive app reloads
+    for (const s of sessions) {
+      if (s.source === 'manual') {
+        await saveSessionOverride(dateStr, s)
+      }
+    }
   },
 
-  updateExercise: (dateStr, exerciseId, updates) => {
+  updateExercise: async (dateStr, exerciseId, updates) => {
     const { workoutPlan } = get()
     const dayData = workoutPlan[dateStr]
     if (!dayData) return
@@ -348,6 +387,11 @@ export const useWorkoutStore = create((set, get) => ({
         [dateStr]: { sessions }
       }
     })
+    for (const s of sessions) {
+      if (s.source === 'manual') {
+        await saveSessionOverride(dateStr, s)
+      }
+    }
   },
 
   addExercise: (date, exercise) => {
@@ -376,7 +420,7 @@ export const useWorkoutStore = create((set, get) => ({
     db.exercises.add(newEx).catch(() => {})
   },
 
-  addSessionFromTemplate: (dateStr, templateId, time = '08:00 AM') => {
+  addSessionFromTemplate: async (dateStr, templateId, time = '08:00 AM') => {
     const { workoutPlan, templates } = get()
     const template = templates.find(t => t.id === templateId)
     if (!template) return
@@ -413,6 +457,7 @@ export const useWorkoutStore = create((set, get) => ({
         [dateStr]: { sessions: [...prior, newSession] }
       }
     })
+    await saveSessionOverride(dateStr, newSession)
   },
 
   // ─────────────────────────────────────────────────────────
