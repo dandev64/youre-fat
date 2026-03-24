@@ -3,16 +3,17 @@ import { useParams } from 'react-router-dom'
 import { parseISO } from 'date-fns'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 import TopAppBar from '../components/TopAppBar'
-import BottomNavBar from '../components/BottomNavBar'
+
 import ExerciseCard from '../components/ExerciseCard'
 import ExercisePickerModal from '../components/ExercisePickerModal'
 
 export default function DailyWorkoutPage() {
   const { date } = useParams()
-  const { workoutPlan, markAllDone, completedExercises, setSelectedDate, addExercise: storeAddExercise, addCustomExercise } = useWorkoutStore()
+  const { workoutPlan, markAllDone, completedExercises, setSelectedDate, addExercise: storeAddExercise, addCustomExercise, deleteExercise, updateExercise } = useWorkoutStore()
   const [showAddModal, setShowAddModal] = useState(false)
   const [addMode, setAddMode] = useState('library') // 'library' | 'custom'
   const [prefillExercise, setPrefillExercise] = useState(null)
+  const [editingExercise, setEditingExercise] = useState(null) // exercise object or null
 
   useEffect(() => {
     if (date) setSelectedDate(parseISO(date))
@@ -33,7 +34,8 @@ export default function DailyWorkoutPage() {
       {/* Mark All Done FAB */}
       <button
         onClick={() => markAllDone(date)}
-        className={`fixed bottom-28 right-6 w-14 h-14 rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all z-40 ${
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
+        className={`fixed right-6 w-14 h-14 rounded-2xl shadow-xl flex items-center justify-center active:scale-90 transition-all z-40 ${
           allDone
             ? 'bg-gradient-to-tr from-emerald-500 to-teal-400 shadow-emerald-500/30'
             : 'bg-gradient-to-tr from-purple-600 to-purple-400 shadow-purple-500/30'
@@ -47,7 +49,7 @@ export default function DailyWorkoutPage() {
         </span>
       </button>
 
-      <main className="pt-28 px-6 max-w-2xl mx-auto pb-nav"
+      <main className="pt-28 px-6 max-w-2xl mx-auto pb-24"
       style={{ 
           // 1. Get the safe area (or 20px minimum)
           // 2. Add 64px (the h-16 height of your TopAppBar)
@@ -94,7 +96,13 @@ export default function DailyWorkoutPage() {
             {exercises.length > 0 ? (
               <div className="space-y-4">
                 {exercises.map((exercise, idx) => (
-                  <ExerciseCard key={exercise.id} exercise={exercise} index={idx} />
+                  <ExerciseCard
+                    key={exercise.id}
+                    exercise={exercise}
+                    index={idx}
+                    onEdit={(ex) => setEditingExercise(ex)}
+                    onDelete={(exId) => deleteExercise(date, exId)}
+                  />
                 ))}
               </div>
             ) : (
@@ -172,12 +180,23 @@ export default function DailyWorkoutPage() {
         />
       )}
 
-      <BottomNavBar />
+      {editingExercise && (
+        <DailyExerciseFormModal
+          initial={editingExercise}
+          editMode
+          onSave={(updates) => {
+            updateExercise(date, editingExercise.id, updates)
+            setEditingExercise(null)
+          }}
+          onClose={() => setEditingExercise(null)}
+        />
+      )}
+
     </div>
   )
 }
 
-function DailyExerciseFormModal({ initial, onSave, onClose }) {
+function DailyExerciseFormModal({ initial, onSave, onClose, editMode = false }) {
   const [form, setForm] = useState({
     name: initial?.name ?? '', weight: initial?.weight ?? '', sets: initial?.sets ?? '',
     reps: initial?.reps ?? '', rest: initial?.rest ?? '60s',
@@ -249,7 +268,7 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
         </div>
 
         <div className="px-6 pt-2 pb-3 shrink-0 flex items-center justify-between">
-          <h2 className="font-headline font-extrabold text-xl text-on-surface">{initial ? 'Edit & Add Exercise' : 'Add Exercise'}</h2>
+          <h2 className="font-headline font-extrabold text-xl text-on-surface">{editMode ? 'Edit Exercise' : initial ? 'Edit & Add Exercise' : 'Add Exercise'}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center active:scale-90">
             <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: '18px' }}>close</span>
           </button>
@@ -356,7 +375,7 @@ function DailyExerciseFormModal({ initial, onSave, onClose }) {
 
         <div className="px-6 pt-3 shrink-0">
           <button type="submit" form="daily-exercise-form" className="w-full py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-purple-400 text-white font-bold text-sm active:scale-[0.98] transition-all shadow-lg shadow-purple-500/20">
-            Add Exercise
+            {editMode ? 'Save Changes' : 'Add Exercise'}
           </button>
         </div>
       </div>

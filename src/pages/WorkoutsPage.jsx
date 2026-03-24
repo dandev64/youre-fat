@@ -4,7 +4,7 @@ import { format } from 'date-fns'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 import { COLOR_MAP } from '../data/seedTemplates'
 import TopAppBar from '../components/TopAppBar'
-import BottomNavBar from '../components/BottomNavBar'
+
 import TemplateCard from '../components/TemplateCard'
 import AddSessionModal from '../components/AddSessionModal'
 
@@ -34,7 +34,7 @@ export default function WorkoutsPage() {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav"
+      <main className="pt-24 px-5 max-w-2xl mx-auto pb-24"
       style={{ 
           // 1. Get the safe area (or 20px minimum)
           // 2. Add 64px (the h-16 height of your TopAppBar)
@@ -153,14 +153,14 @@ export default function WorkoutsPage() {
       {/* FAB — create new template */}
       <button
         onClick={() => navigate('/workouts/new')}
-        className="fixed bottom-32 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-purple-400 shadow-xl shadow-purple-500/30 flex items-center justify-center active:scale-90 transition-all z-40"
+        className="fixed right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-purple-400 shadow-xl shadow-purple-500/30 flex items-center justify-center active:scale-90 transition-all z-40"
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <span className="material-symbols-outlined text-white" style={{ fontSize: '26px' }}>
           add
         </span>
       </button>
 
-      <BottomNavBar />
     </div>
   )
 }

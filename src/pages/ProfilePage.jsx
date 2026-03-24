@@ -1,12 +1,13 @@
 import { useNavigate } from 'react-router-dom'
 import TopAppBar from '../components/TopAppBar'
-import BottomNavBar from '../components/BottomNavBar'
+
 import { useWorkoutStore } from '../store/useWorkoutStore'
 import { syncEnabled } from '../lib/supabase'
 
 const SYNC_LABEL = {
   idle:    { icon: 'cloud_off',   text: 'Not synced',    cls: 'text-on-surface-variant/50' },
-  syncing: { icon: 'sync',        text: 'Syncing…',      cls: 'text-primary animate-spin' },
+  pushing: { icon: 'cloud_upload', text: 'Pushing…',     cls: 'text-primary animate-pulse' },
+  pulling: { icon: 'cloud_download', text: 'Pulling…',   cls: 'text-primary animate-pulse' },
   synced:  { icon: 'cloud_done',  text: 'Up to date',    cls: 'text-emerald-500' },
   error:   { icon: 'cloud_off',   text: 'Sync failed',   cls: 'text-error' }
 }
@@ -14,7 +15,7 @@ const SYNC_LABEL = {
 export default function ProfilePage() {
   const navigate = useNavigate()
   const {
-    user, signOut, manualSync,
+    user, signOut, pushToCloud, pullFromCloud,
     syncStatus, syncError,
     workoutPlan, completedExercises, templates
   } = useWorkoutStore()
@@ -43,7 +44,7 @@ export default function ProfilePage() {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav"
+      <main className="pt-24 px-5 max-w-2xl mx-auto pb-24"
       style={{ 
           // 1. Get the safe area (or 20px minimum)
           // 2. Add 64px (the h-16 height of your TopAppBar)
@@ -99,19 +100,24 @@ export default function ProfilePage() {
               </div>
 
               {user ? (
-                <button
-                  onClick={() => manualSync()}
-                  disabled={syncStatus === 'syncing'}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold active:scale-95 transition-all disabled:opacity-40"
-                >
-                  <span
-                    className={`material-symbols-outlined ${syncStatus === 'syncing' ? 'animate-spin' : ''}`}
-                    style={{ fontSize: '15px' }}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => pushToCloud()}
+                    disabled={syncStatus === 'pushing' || syncStatus === 'pulling'}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold active:scale-95 transition-all disabled:opacity-40"
                   >
-                    sync
-                  </span>
-                  Sync now
-                </button>
+                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>cloud_upload</span>
+                    Push
+                  </button>
+                  <button
+                    onClick={() => pullFromCloud()}
+                    disabled={syncStatus === 'pushing' || syncStatus === 'pulling'}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-full bg-primary/10 text-primary text-xs font-bold active:scale-95 transition-all disabled:opacity-40"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>cloud_download</span>
+                    Pull
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() => navigate('/auth')}
@@ -192,7 +198,6 @@ export default function ProfilePage() {
         </div>
       </main>
 
-      <BottomNavBar />
     </div>
   )
 }

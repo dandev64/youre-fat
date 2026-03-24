@@ -88,7 +88,7 @@ export default function TemplateDetailPage({ isNew = false }) {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 max-w-2xl mx-auto pb-nav"
+      <main className="pt-24 max-w-2xl mx-auto pb-24"
       style={{ 
           // 1. Get the safe area (or 20px minimum)
           // 2. Add 64px (the h-16 height of your TopAppBar)

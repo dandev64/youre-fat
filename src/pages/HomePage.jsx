@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { format, startOfWeek, addWeeks, subWeeks, isSameDay } from 'date-fns'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 import TopAppBar from '../components/TopAppBar'
-import BottomNavBar from '../components/BottomNavBar'
+
 import DayPicker from '../components/DayPicker'
 import SessionCard from '../components/SessionCard'
 import AddSessionModal from '../components/AddSessionModal'
@@ -39,7 +39,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-background">
       <TopAppBar />
 
-      <main className="pt-24 px-5 max-w-2xl mx-auto pb-nav"
+      <main className="pt-24 px-5 max-w-2xl mx-auto pb-24"
       style={{
           paddingTop: 'calc(max(env(safe-area-inset-top), 20px) + 70px)'
         }}>
@@ -159,7 +159,8 @@ export default function HomePage() {
       {/* FAB */}
       <button
         onClick={() => setShowAddSession(true)}
-        className="fixed bottom-32 right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-purple-400 shadow-xl shadow-purple-500/30 flex items-center justify-center active:scale-90 transition-all z-40"
+        className="fixed right-6 w-14 h-14 rounded-full bg-gradient-to-tr from-purple-600 to-purple-400 shadow-xl shadow-purple-500/30 flex items-center justify-center active:scale-90 transition-all z-40"
+        style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <span className="material-symbols-outlined text-white" style={{ fontSize: '26px' }}>
           add
@@ -177,7 +178,6 @@ export default function HomePage() {
         <ScheduleEditor onClose={() => setShowSchedule(false)} />
       )}
 
-      <BottomNavBar />
     </div>
   )
 }

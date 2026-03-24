@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react'
 import { useWorkoutStore } from '../store/useWorkoutStore'
 
 const CARD_GRADS = [
@@ -13,13 +14,25 @@ function getYouTubeId(url) {
   return m?.[1] ?? null
 }
 
-export default function ExerciseCard({ exercise, index }) {
+export default function ExerciseCard({ exercise, index, onEdit, onDelete }) {
   const { completedExercises, expandedExercise, toggleExerciseComplete, setExpandedExercise } =
     useWorkoutStore()
+  const [showMenu, setShowMenu] = useState(false)
+  const menuRef = useRef(null)
 
   const isCompleted = completedExercises.has(exercise.id)
   const isExpanded = expandedExercise === exercise.id
   const gradClass = CARD_GRADS[index % CARD_GRADS.length]
+
+  // Close menu on outside tap
+  useEffect(() => {
+    if (!showMenu) return
+    const handle = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setShowMenu(false)
+    }
+    document.addEventListener('pointerdown', handle)
+    return () => document.removeEventListener('pointerdown', handle)
+  }, [showMenu])
 
   const handleCheckbox = (e) => {
     e.stopPropagation()
@@ -98,9 +111,9 @@ export default function ExerciseCard({ exercise, index }) {
           )}
 
           {!isCompleted && !isExpanded && (
-            <div className="flex items-center gap-0.5 shrink-0">
+            <div className="flex items-center gap-0.5 shrink-0 relative" ref={menuRef}>
               <button
-                onClick={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); setShowMenu(v => !v) }}
                 className="w-8 h-8 flex items-center justify-center rounded-full active:bg-surface-container transition-colors"
               >
                 <span
@@ -110,6 +123,28 @@ export default function ExerciseCard({ exercise, index }) {
                   more_vert
                 </span>
               </button>
+              {showMenu && (
+                <div className="absolute right-0 top-9 z-50 bg-white rounded-2xl shadow-xl border border-black/5 py-1.5 min-w-[140px] overflow-hidden">
+                  {onEdit && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onEdit(exercise) }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-surface-container transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-on-surface-variant" style={{ fontSize: '18px' }}>edit</span>
+                      <span className="text-sm font-medium text-on-surface">Edit</span>
+                    </button>
+                  )}
+                  {onDelete && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setShowMenu(false); onDelete(exercise.id) }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 active:bg-surface-container transition-colors"
+                    >
+                      <span className="material-symbols-outlined text-red-500" style={{ fontSize: '18px' }}>delete</span>
+                      <span className="text-sm font-medium text-red-500">Delete</span>
+                    </button>
+                  )}
+                </div>
+              )}
               <span
                 className="material-symbols-outlined text-on-surface-variant/40"
                 style={{ fontSize: '20px' }}

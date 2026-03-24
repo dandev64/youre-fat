@@ -19,17 +19,7 @@ import {
   saveWeeklySchedule
 } from '../db/db'
 import { supabase, syncEnabled } from '../lib/supabase'
-import {
-  pullAllUserData,
-  remoteUpsertTemplate,
-  remoteDeleteTemplate,
-  remoteUpsertSession,
-  remoteSetCompleted,
-  remoteSetIncomplete,
-  flushPendingQueue,
-  subscribeToCompletions,
-  subscribeToSessions
-} from '../lib/sync'
+import { pushAllUserData, pullAllUserData } from '../lib/sync'
 
 function nextDayNumber(workoutPlan) {
   return (
@@ -65,9 +55,8 @@ export const useWorkoutStore = create((set, get) => ({
   // ── auth / sync ──────────────────────────────────────────
   user: null,
   authLoading: true,
-  syncStatus: 'idle',
+  syncStatus: 'idle',   // 'idle' | 'pushing' | 'pulling' | 'synced' | 'error'
   syncError: null,
-  _realtimeUnsubs: [],
 
   initialized: false,
 
@@ -107,7 +96,6 @@ export const useWorkoutStore = create((set, get) => ({
     const { data: { session } } = await supabase.auth.getSession()
     if (session?.user) {
       set({ user: session.user, authLoading: false })
-      await get()._onSignIn(session.user)
     } else {
       set({ authLoading: false })
     }
@@ -115,17 +103,19 @@ export const useWorkoutStore = create((set, get) => ({
     supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         set({ user: session.user })
-        await get()._onSignIn(session.user)
       } else if (event === 'SIGNED_OUT') {
-        get()._onSignOut()
+        const schedule = get().weeklySchedule
+        set({
+          user: null,
+          workoutPlan: generateWorkoutPlan(SEED_TEMPLATES, schedule),
+          completedExercises: new Set(),
+          templates: SEED_TEMPLATES,
+          syncStatus: 'idle',
+          syncError: null
+        })
       } else if (event === 'TOKEN_REFRESHED' && session?.user) {
         set({ user: session.user })
       }
-    })
-
-    window.addEventListener('online', () => {
-      const { user } = get()
-      if (user) flushPendingQueue(user.id).catch(() => {})
     })
   },
 
@@ -136,15 +126,12 @@ export const useWorkoutStore = create((set, get) => ({
     const { templates, weeklySchedule, workoutPlan } = get()
     const freshPlan = generateWorkoutPlan(templates, weeklySchedule)
 
-    // Merge: replace schedule sessions, keep manual sessions
     const merged = {}
     const allDates = new Set([...Object.keys(freshPlan), ...Object.keys(workoutPlan)])
 
     for (const dateStr of allDates) {
       const oldSessions = workoutPlan[dateStr]?.sessions ?? []
       const newScheduleSessions = freshPlan[dateStr]?.sessions ?? []
-
-      // Keep sessions that were manually added
       const manualSessions = oldSessions.filter(s => s.source === 'manual')
 
       merged[dateStr] = {
@@ -156,113 +143,7 @@ export const useWorkoutStore = create((set, get) => ({
   },
 
   // ─────────────────────────────────────────────────────────
-  // Internal auth handlers
-  // ─────────────────────────────────────────────────────────
-  _onSignIn: async (user) => {
-    set({ syncStatus: 'syncing', syncError: null })
-
-    try {
-      await flushPendingQueue(user.id)
-      const { templates, sessionsMap, completions } = await pullAllUserData(user.id)
-
-      const { weeklySchedule } = get()
-      const freshPlan = generateWorkoutPlan(
-        templates.length ? templates : get().templates,
-        weeklySchedule
-      )
-      const mergedPlan = { ...freshPlan }
-      for (const [date, dayData] of Object.entries(sessionsMap)) {
-        mergedPlan[date] = dayData
-      }
-
-      await db.completions.clear()
-      const completionRows = [...completions].map(id => ({ exerciseId: id, date: '' }))
-      await db.completions.bulkPut(completionRows)
-
-      if (templates.length) {
-        await db.templates.clear()
-        await db.templates.bulkPut(templates)
-      }
-
-      set({
-        workoutPlan: mergedPlan,
-        completedExercises: completions,
-        templates: templates.length ? templates : get().templates,
-        syncStatus: 'synced',
-        syncError: null
-      })
-
-      get()._subscribeRealtime(user.id)
-    } catch (err) {
-      console.error('[sync] pull failed:', err.message)
-      set({ syncStatus: 'error', syncError: err.message })
-    }
-  },
-
-  _onSignOut: () => {
-    get()._realtimeUnsubs.forEach(fn => fn())
-
-    const schedule = get().weeklySchedule
-    set({
-      user: null,
-      workoutPlan: generateWorkoutPlan(SEED_TEMPLATES, schedule),
-      completedExercises: new Set(),
-      templates: SEED_TEMPLATES,
-      syncStatus: 'idle',
-      syncError: null,
-      _realtimeUnsubs: []
-    })
-  },
-
-  _subscribeRealtime: (userId) => {
-    const unsubCompletions = subscribeToCompletions(
-      userId,
-      (exerciseId) => {
-        set(state => {
-          const next = new Set(state.completedExercises)
-          next.add(exerciseId)
-          return { completedExercises: next }
-        })
-      },
-      (exerciseId) => {
-        set(state => {
-          const next = new Set(state.completedExercises)
-          next.delete(exerciseId)
-          return { completedExercises: next }
-        })
-      }
-    )
-
-    const unsubSessions = subscribeToSessions(
-      userId,
-      (date, session, eventType) => {
-        if (!date || !session) return
-        set(state => {
-          const existing = state.workoutPlan[date]?.sessions ?? []
-          let sessions
-          if (eventType === 'DELETE') {
-            sessions = existing.filter(s => s.id !== session.id)
-          } else {
-            const idx = existing.findIndex(s => s.id === session.id)
-            sessions = idx >= 0
-              ? existing.map((s, i) => i === idx ? session : s)
-              : [...existing, session]
-          }
-          return {
-            workoutPlan: {
-              ...state.workoutPlan,
-              [date]: { sessions }
-            }
-          }
-        })
-      }
-    )
-
-    set({ _realtimeUnsubs: [unsubCompletions, unsubSessions] })
-  },
-
-  // ─────────────────────────────────────────────────────────
-  // Auth actions (public)
+  // Auth actions
   // ─────────────────────────────────────────────────────────
   signIn: async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })
@@ -280,10 +161,72 @@ export const useWorkoutStore = create((set, get) => ({
     await supabase.auth.signOut()
   },
 
-  manualSync: async () => {
+  // ─────────────────────────────────────────────────────────
+  // Manual Push / Pull
+  // ─────────────────────────────────────────────────────────
+  pushToCloud: async () => {
+    const { user, templates, workoutPlan, completedExercises, customExercises, weeklySchedule } = get()
+    if (!user) return
+    set({ syncStatus: 'pushing', syncError: null })
+    try {
+      await pushAllUserData(user.id, { templates, workoutPlan, completedExercises, customExercises, weeklySchedule })
+      set({ syncStatus: 'synced', syncError: null })
+    } catch (err) {
+      console.error('[sync] push failed:', err.message)
+      set({ syncStatus: 'error', syncError: err.message })
+    }
+  },
+
+  pullFromCloud: async () => {
     const { user } = get()
     if (!user) return
-    await get()._onSignIn(user)
+    set({ syncStatus: 'pulling', syncError: null })
+    try {
+      const { templates, sessionsMap, completions, customExercises, weeklySchedule } = await pullAllUserData(user.id)
+
+      const pulledTemplates = templates.length ? templates : get().templates
+      const pulledSchedule = weeklySchedule ?? get().weeklySchedule
+      const pulledCustomExercises = customExercises ?? get().customExercises
+
+      const freshPlan = generateWorkoutPlan(pulledTemplates, pulledSchedule)
+      const mergedPlan = { ...freshPlan }
+      for (const [date, dayData] of Object.entries(sessionsMap)) {
+        const scheduleSessions = freshPlan[date]?.sessions ?? []
+        mergedPlan[date] = { sessions: [...scheduleSessions, ...dayData.sessions] }
+      }
+
+      // Persist pulled data to Dexie
+      await db.completions.clear()
+      const completionRows = [...completions].map(id => ({ exerciseId: id, date: '' }))
+      if (completionRows.length) await db.completions.bulkPut(completionRows)
+
+      if (templates.length) {
+        await db.templates.clear()
+        await db.templates.bulkPut(templates)
+      }
+
+      if (customExercises) {
+        await db.customExercises.clear()
+        if (customExercises.length) await db.customExercises.bulkPut(customExercises)
+      }
+
+      if (weeklySchedule) {
+        await saveWeeklySchedule(weeklySchedule)
+      }
+
+      set({
+        workoutPlan: mergedPlan,
+        completedExercises: completions,
+        templates: pulledTemplates,
+        customExercises: pulledCustomExercises,
+        weeklySchedule: pulledSchedule,
+        syncStatus: 'synced',
+        syncError: null
+      })
+    } catch (err) {
+      console.error('[sync] pull failed:', err.message)
+      set({ syncStatus: 'error', syncError: err.message })
+    }
   },
 
   // ─────────────────────────────────────────────────────────
@@ -307,18 +250,16 @@ export const useWorkoutStore = create((set, get) => ({
   // Exercise completion
   // ─────────────────────────────────────────────────────────
   toggleExerciseComplete: async (id) => {
-    const { completedExercises, selectedDate, user } = get()
+    const { completedExercises, selectedDate } = get()
     const dateStr = format(selectedDate, 'yyyy-MM-dd')
     const newSet = new Set(completedExercises)
 
     if (newSet.has(id)) {
       newSet.delete(id)
       await setIncomplete(id)
-      if (user) remoteSetIncomplete(user.id, id).catch(() => {})
     } else {
       newSet.add(id)
       await setCompleted(id, dateStr)
-      if (user) remoteSetCompleted(user.id, id, dateStr).catch(() => {})
     }
 
     set({ completedExercises: newSet })
@@ -328,7 +269,7 @@ export const useWorkoutStore = create((set, get) => ({
     set(state => ({ expandedExercise: state.expandedExercise === id ? null : id })),
 
   markAllDone: async (date) => {
-    const { workoutPlan, completedExercises, user } = get()
+    const { workoutPlan, completedExercises } = get()
     const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd')
     const dayPlan = workoutPlan[dateStr]
     if (!dayPlan) return
@@ -338,13 +279,6 @@ export const useWorkoutStore = create((set, get) => ({
     allExercises.forEach(ex => newSet.add(ex.id))
 
     await markAllComplete(allExercises, dateStr)
-
-    if (user) {
-      allExercises.forEach(ex =>
-        remoteSetCompleted(user.id, ex.id, dateStr).catch(() => {})
-      )
-    }
-
     set({ completedExercises: newSet })
   },
 
@@ -365,8 +299,44 @@ export const useWorkoutStore = create((set, get) => ({
     })
   },
 
+  deleteExercise: (dateStr, exerciseId) => {
+    const { workoutPlan } = get()
+    const dayData = workoutPlan[dateStr]
+    if (!dayData) return
+
+    const sessions = dayData.sessions.map(s => ({
+      ...s,
+      exercises: s.exercises.filter(ex => ex.id !== exerciseId)
+    }))
+    set({
+      workoutPlan: {
+        ...workoutPlan,
+        [dateStr]: { sessions }
+      }
+    })
+  },
+
+  updateExercise: (dateStr, exerciseId, updates) => {
+    const { workoutPlan } = get()
+    const dayData = workoutPlan[dateStr]
+    if (!dayData) return
+
+    const sessions = dayData.sessions.map(s => ({
+      ...s,
+      exercises: s.exercises.map(ex =>
+        ex.id === exerciseId ? { ...ex, ...updates } : ex
+      )
+    }))
+    set({
+      workoutPlan: {
+        ...workoutPlan,
+        [dateStr]: { sessions }
+      }
+    })
+  },
+
   addExercise: (date, exercise) => {
-    const { workoutPlan, user } = get()
+    const { workoutPlan } = get()
     const dateStr = typeof date === 'string' ? date : format(date, 'yyyy-MM-dd')
     const dayPlan = workoutPlan[dateStr]
     if (!dayPlan?.sessions?.length) return
@@ -389,14 +359,10 @@ export const useWorkoutStore = create((set, get) => ({
 
     set({ workoutPlan: updatedPlan })
     db.exercises.add(newEx).catch(() => {})
-
-    if (user) {
-      remoteUpsertSession(user.id, dateStr, updatedSession).catch(() => {})
-    }
   },
 
   addSessionFromTemplate: (dateStr, templateId, time = '08:00 AM') => {
-    const { workoutPlan, templates, user } = get()
+    const { workoutPlan, templates } = get()
     const template = templates.find(t => t.id === templateId)
     if (!template) return
 
@@ -432,39 +398,30 @@ export const useWorkoutStore = create((set, get) => ({
         [dateStr]: { sessions: [...prior, newSession] }
       }
     })
-
-    if (user) {
-      remoteUpsertSession(user.id, dateStr, newSession).catch(() => {})
-    }
   },
 
   // ─────────────────────────────────────────────────────────
   // Templates CRUD
   // ─────────────────────────────────────────────────────────
   addTemplate: async (template) => {
-    const { user } = get()
     const newTpl = { ...template, id: `tpl-custom-${Date.now()}` }
     await saveTemplate(newTpl)
-    if (user) remoteUpsertTemplate(user.id, newTpl).catch(() => {})
     set(state => ({ templates: [...state.templates, newTpl] }))
     return newTpl.id
   },
 
   updateTemplate: async (id, updates) => {
-    const { user, templates } = get()
+    const { templates } = get()
     const updated = templates.map(t => (t.id === id ? { ...t, ...updates } : t))
     const tpl = updated.find(t => t.id === id)
     await saveTemplate(tpl)
-    if (user) remoteUpsertTemplate(user.id, tpl).catch(() => {})
     set({ templates: updated })
-    // Regenerate plan so scheduled sessions pick up the new exercises
     get().regeneratePlan()
   },
 
   deleteTemplate: async (id) => {
-    const { user, weeklySchedule } = get()
+    const { weeklySchedule } = get()
     await deleteTemplateById(id)
-    if (user) remoteDeleteTemplate(user.id, id).catch(() => {})
     set(state => ({ templates: state.templates.filter(t => t.id !== id) }))
 
     // Clear this template from the schedule if it was assigned

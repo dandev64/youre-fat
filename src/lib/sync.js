@@ -1,13 +1,10 @@
 /**
- * Sync service — wraps all Supabase read/write operations.
+ * Sync service — manual push/pull to Supabase.
  *
  * Strategy:
- *  • Every mutating action writes to Dexie immediately (offline-first).
- *  • If the user is authenticated and online it also writes to Supabase.
- *  • If the Supabase write fails (offline), the operation is queued in
- *    Dexie `pendingSyncs` and retried the next time `flushPendingQueue`
- *    is called (on app focus / reconnect).
- *  • On sign-in we pull all remote data and merge it into local state.
+ *  • All mutations write to Dexie immediately (offline-first).
+ *  • User explicitly pushes local → remote or pulls remote → local.
+ *  • No auto-sync or realtime subscriptions.
  */
 
 import { supabase, syncEnabled } from './supabase'
@@ -19,37 +16,19 @@ function now() {
   return new Date().toISOString()
 }
 
-async function queue(operation, payload) {
-  await db.pendingSyncs.add({ operation, payload, createdAt: Date.now() })
-}
-
 // ── Templates ──────────────────────────────────────────────────────────────
 
-export async function remoteUpsertTemplate(userId, template) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('templates')
-    .upsert({ id: template.id, user_id: userId, data: template, updated_at: now() })
-  if (error) {
-    await queue('upsert_template', { userId, template })
-    console.warn('[sync] queued upsert_template:', error.message)
+async function pushTemplates(userId, templates) {
+  // Clear remote then bulk insert
+  await supabase.from('templates').delete().eq('user_id', userId)
+  if (templates.length) {
+    const rows = templates.map(t => ({ id: t.id, user_id: userId, data: t, updated_at: now() }))
+    const { error } = await supabase.from('templates').upsert(rows)
+    if (error) throw error
   }
 }
 
-export async function remoteDeleteTemplate(userId, templateId) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('templates')
-    .delete()
-    .eq('id', templateId)
-    .eq('user_id', userId)
-  if (error) {
-    await queue('delete_template', { userId, templateId })
-    console.warn('[sync] queued delete_template:', error.message)
-  }
-}
-
-export async function pullTemplates(userId) {
+async function pullTemplates(userId) {
   const { data, error } = await supabase
     .from('templates')
     .select('data')
@@ -60,37 +39,30 @@ export async function pullTemplates(userId) {
 
 // ── Sessions ───────────────────────────────────────────────────────────────
 
-export async function remoteUpsertSession(userId, dateStr, session) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('workout_sessions')
-    .upsert({ id: session.id, user_id: userId, date: dateStr, data: session, updated_at: now() })
-  if (error) {
-    await queue('upsert_session', { userId, dateStr, session })
-    console.warn('[sync] queued upsert_session:', error.message)
+async function pushSessions(userId, workoutPlan) {
+  // Collect all sessions with source === 'manual' (user-added, not from schedule)
+  const rows = []
+  for (const [dateStr, dayData] of Object.entries(workoutPlan)) {
+    for (const session of (dayData.sessions ?? [])) {
+      if (session.source === 'manual') {
+        rows.push({ id: session.id, user_id: userId, date: dateStr, data: session, updated_at: now() })
+      }
+    }
+  }
+  await supabase.from('workout_sessions').delete().eq('user_id', userId)
+  if (rows.length) {
+    const { error } = await supabase.from('workout_sessions').upsert(rows)
+    if (error) throw error
   }
 }
 
-export async function remoteDeleteSession(userId, sessionId) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('workout_sessions')
-    .delete()
-    .eq('id', sessionId)
-    .eq('user_id', userId)
-  if (error) {
-    await queue('delete_session', { userId, sessionId })
-  }
-}
-
-export async function pullSessions(userId) {
+async function pullSessions(userId) {
   const { data, error } = await supabase
     .from('workout_sessions')
     .select('date, data')
     .eq('user_id', userId)
   if (error) throw error
 
-  // Group into { [date]: { sessions: [...] } }
   const map = {}
   for (const row of data) {
     if (!map[row.date]) map[row.date] = { sessions: [] }
@@ -101,31 +73,20 @@ export async function pullSessions(userId) {
 
 // ── Completions ────────────────────────────────────────────────────────────
 
-export async function remoteSetCompleted(userId, exerciseId, date) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('completions')
-    .upsert({ exercise_id: exerciseId, user_id: userId, date, completed_at: now() })
-  if (error) {
-    await queue('upsert_completion', { userId, exerciseId, date })
-    console.warn('[sync] queued upsert_completion:', error.message)
+async function pushCompletions(userId, completedExercises) {
+  await supabase.from('completions').delete().eq('user_id', userId)
+  const ids = [...completedExercises]
+  if (ids.length) {
+    const rows = ids.map(id => ({ exercise_id: id, user_id: userId, date: '', completed_at: now() }))
+    // Supabase has row limits for bulk inserts, chunk at 500
+    for (let i = 0; i < rows.length; i += 500) {
+      const { error } = await supabase.from('completions').upsert(rows.slice(i, i + 500))
+      if (error) throw error
+    }
   }
 }
 
-export async function remoteSetIncomplete(userId, exerciseId) {
-  if (!syncEnabled) return
-  const { error } = await supabase
-    .from('completions')
-    .delete()
-    .eq('exercise_id', exerciseId)
-    .eq('user_id', userId)
-  if (error) {
-    await queue('delete_completion', { userId, exerciseId })
-    console.warn('[sync] queued delete_completion:', error.message)
-  }
-}
-
-export async function pullCompletions(userId) {
+async function pullCompletions(userId) {
   const { data, error } = await supabase
     .from('completions')
     .select('exercise_id')
@@ -134,99 +95,102 @@ export async function pullCompletions(userId) {
   return new Set(data.map(r => r.exercise_id))
 }
 
-// ── Full pull on sign-in ────────────────────────────────────────────────────
+// ── Custom Exercises ───────────────────────────────────────────────────────
 
-export async function pullAllUserData(userId) {
-  const [templates, sessionsMap, completions] = await Promise.all([
-    pullTemplates(userId),
-    pullSessions(userId),
-    pullCompletions(userId)
-  ])
-  return { templates, sessionsMap, completions }
-}
-
-// ── Pending queue flush ────────────────────────────────────────────────────
-
-export async function flushPendingQueue(userId) {
-  if (!syncEnabled || !userId) return
-
-  const items = await db.pendingSyncs.toArray()
-  if (!items.length) return
-
-  console.info(`[sync] flushing ${items.length} pending operation(s)`)
-
-  for (const item of items) {
-    try {
-      const p = item.payload
-      switch (item.operation) {
-        case 'upsert_template':
-          await supabase.from('templates').upsert({ id: p.template.id, user_id: userId, data: p.template, updated_at: now() })
-          break
-        case 'delete_template':
-          await supabase.from('templates').delete().eq('id', p.templateId).eq('user_id', userId)
-          break
-        case 'upsert_session':
-          await supabase.from('workout_sessions').upsert({ id: p.session.id, user_id: userId, date: p.dateStr, data: p.session, updated_at: now() })
-          break
-        case 'delete_session':
-          await supabase.from('workout_sessions').delete().eq('id', p.sessionId).eq('user_id', userId)
-          break
-        case 'upsert_completion':
-          await supabase.from('completions').upsert({ exercise_id: p.exerciseId, user_id: userId, date: p.date, completed_at: now() })
-          break
-        case 'delete_completion':
-          await supabase.from('completions').delete().eq('exercise_id', p.exerciseId).eq('user_id', userId)
-          break
-      }
-      await db.pendingSyncs.delete(item.id)
-    } catch (err) {
-      console.warn('[sync] flush failed for item', item.id, err.message)
+async function pushCustomExercises(userId, customExercises) {
+  await supabase.from('custom_exercises').delete().eq('user_id', userId)
+  if (customExercises.length) {
+    const rows = customExercises.map(ex => ({
+      id: ex.libraryId,
+      user_id: userId,
+      data: ex,
+      updated_at: now()
+    }))
+    const { error } = await supabase.from('custom_exercises').upsert(rows)
+    if (error) {
+      console.warn('[sync] custom_exercises table may not exist yet, skipping:', error.message)
     }
   }
 }
 
-// ── Realtime subscription ──────────────────────────────────────────────────
+async function pullCustomExercises(userId) {
+  const { data, error } = await supabase
+    .from('custom_exercises')
+    .select('data')
+    .eq('user_id', userId)
+  if (error) {
+    console.warn('[sync] custom_exercises table may not exist yet, skipping:', error.message)
+    return null
+  }
+  return data.map(r => r.data)
+}
+
+// ── Weekly Schedule ────────────────────────────────────────────────────────
+
+async function pushWeeklySchedule(userId, schedule) {
+  await supabase.from('weekly_schedule').delete().eq('user_id', userId)
+  const rows = Object.entries(schedule).map(([dow, templateId]) => ({
+    id: `${userId}-${dow}`,
+    user_id: userId,
+    dow: parseInt(dow),
+    template_id: templateId,
+    updated_at: now()
+  }))
+  if (rows.length) {
+    const { error } = await supabase.from('weekly_schedule').upsert(rows)
+    if (error) {
+      console.warn('[sync] weekly_schedule table may not exist yet, skipping:', error.message)
+    }
+  }
+}
+
+async function pullWeeklySchedule(userId) {
+  const { data, error } = await supabase
+    .from('weekly_schedule')
+    .select('dow, template_id')
+    .eq('user_id', userId)
+  if (error) {
+    console.warn('[sync] weekly_schedule table may not exist yet, skipping:', error.message)
+    return null
+  }
+  if (!data.length) return null
+  const schedule = {}
+  data.forEach(r => { schedule[r.dow] = r.template_id })
+  return schedule
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Subscribe to remote completion changes so device B instantly reflects
- * what device A just checked off.
- * Returns an unsubscribe function.
+ * Push all local data to Supabase (overwrites remote).
  */
-export function subscribeToCompletions(userId, onInsert, onDelete) {
-  if (!syncEnabled) return () => {}
+export async function pushAllUserData(userId, { templates, workoutPlan, completedExercises, customExercises, weeklySchedule }) {
+  if (!syncEnabled) throw new Error('Sync not configured')
 
-  const channel = supabase
-    .channel(`completions:${userId}`)
-    .on(
-      'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'completions', filter: `user_id=eq.${userId}` },
-      (payload) => onInsert(payload.new.exercise_id)
-    )
-    .on(
-      'postgres_changes',
-      { event: 'DELETE', schema: 'public', table: 'completions', filter: `user_id=eq.${userId}` },
-      (payload) => onDelete(payload.old.exercise_id)
-    )
-    .subscribe()
+  await Promise.all([
+    pushTemplates(userId, templates),
+    pushSessions(userId, workoutPlan),
+    pushCompletions(userId, completedExercises),
+    pushCustomExercises(userId, customExercises),
+    pushWeeklySchedule(userId, weeklySchedule)
+  ])
 
-  return () => supabase.removeChannel(channel)
+  // Clear any stale pending queue
+  await db.pendingSyncs.clear()
 }
 
 /**
- * Subscribe to remote session changes — another device added a session.
- * Returns an unsubscribe function.
+ * Pull all remote data from Supabase.
  */
-export function subscribeToSessions(userId, onUpsert) {
-  if (!syncEnabled) return () => {}
+export async function pullAllUserData(userId) {
+  if (!syncEnabled) throw new Error('Sync not configured')
 
-  const channel = supabase
-    .channel(`sessions:${userId}`)
-    .on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'workout_sessions', filter: `user_id=eq.${userId}` },
-      (payload) => onUpsert(payload.new?.date, payload.new?.data, payload.eventType)
-    )
-    .subscribe()
-
-  return () => supabase.removeChannel(channel)
+  const [templates, sessionsMap, completions, customExercises, weeklySchedule] = await Promise.all([
+    pullTemplates(userId),
+    pullSessions(userId),
+    pullCompletions(userId),
+    pullCustomExercises(userId),
+    pullWeeklySchedule(userId)
+  ])
+  return { templates, sessionsMap, completions, customExercises, weeklySchedule }
 }
