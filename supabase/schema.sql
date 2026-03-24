@@ -54,6 +54,38 @@ CREATE POLICY "Users manage their own completions"
   USING  (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- ── Weekly Schedule ──────────────────────────────────────
+-- One row per day-of-week (0=Mon … 6=Sun)
+CREATE TABLE IF NOT EXISTS public.weekly_schedule (
+  id          TEXT        PRIMARY KEY,
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  dow         INTEGER     NOT NULL,
+  template_id TEXT,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.weekly_schedule ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage their own schedule"
+  ON public.weekly_schedule FOR ALL
+  USING  (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- ── Custom Exercises ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.custom_exercises (
+  id          TEXT        PRIMARY KEY,
+  user_id     UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  data        JSONB       NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.custom_exercises ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users manage their own custom exercises"
+  ON public.custom_exercises FOR ALL
+  USING  (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
 -- ── Realtime ──────────────────────────────────────────────
 -- Enable realtime on completions so device B sees checkmarks
 -- immediately when device A ticks an exercise.

@@ -98,7 +98,8 @@ async function pullCompletions(userId) {
 // ── Custom Exercises ───────────────────────────────────────────────────────
 
 async function pushCustomExercises(userId, customExercises) {
-  await supabase.from('custom_exercises').delete().eq('user_id', userId)
+  const { error: delErr } = await supabase.from('custom_exercises').delete().eq('user_id', userId)
+  if (delErr) throw delErr
   if (customExercises.length) {
     const rows = customExercises.map(ex => ({
       id: ex.libraryId,
@@ -107,9 +108,7 @@ async function pushCustomExercises(userId, customExercises) {
       updated_at: now()
     }))
     const { error } = await supabase.from('custom_exercises').upsert(rows)
-    if (error) {
-      console.warn('[sync] custom_exercises table may not exist yet, skipping:', error.message)
-    }
+    if (error) throw error
   }
 }
 
@@ -118,17 +117,15 @@ async function pullCustomExercises(userId) {
     .from('custom_exercises')
     .select('data')
     .eq('user_id', userId)
-  if (error) {
-    console.warn('[sync] custom_exercises table may not exist yet, skipping:', error.message)
-    return null
-  }
+  if (error) throw error
   return data.map(r => r.data)
 }
 
 // ── Weekly Schedule ────────────────────────────────────────────────────────
 
 async function pushWeeklySchedule(userId, schedule) {
-  await supabase.from('weekly_schedule').delete().eq('user_id', userId)
+  const { error: delErr } = await supabase.from('weekly_schedule').delete().eq('user_id', userId)
+  if (delErr) throw delErr
   const rows = Object.entries(schedule).map(([dow, templateId]) => ({
     id: `${userId}-${dow}`,
     user_id: userId,
@@ -138,9 +135,7 @@ async function pushWeeklySchedule(userId, schedule) {
   }))
   if (rows.length) {
     const { error } = await supabase.from('weekly_schedule').upsert(rows)
-    if (error) {
-      console.warn('[sync] weekly_schedule table may not exist yet, skipping:', error.message)
-    }
+    if (error) throw error
   }
 }
 
@@ -149,10 +144,7 @@ async function pullWeeklySchedule(userId) {
     .from('weekly_schedule')
     .select('dow, template_id')
     .eq('user_id', userId)
-  if (error) {
-    console.warn('[sync] weekly_schedule table may not exist yet, skipping:', error.message)
-    return null
-  }
+  if (error) throw error
   if (!data.length) return null
   const schedule = {}
   data.forEach(r => { schedule[r.dow] = r.template_id })
